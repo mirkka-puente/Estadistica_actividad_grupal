@@ -1,0 +1,69 @@
+---
+title: "Actividad 3"
+author: "Grupo 22"
+date: "2026-01-22"
+output: html_document
+---
+
+library(tidyverse)
+
+df <- read.csv("C:/Users/USUARIO/Desktop/Maestria/PRIMER_CUATRIMESTRE/ESTADISTICA y R/ACTIVIDAD 3/mubio02_act3/Base_de_datos_Los_Simpson/Base de datos Los Simpson completa.csv", stringsAsFactors = FALSE)
+
+#Limpieza de datos
+```{r}
+genes_interes <-names(df)[
+  match("ADCY3", names(df)) :
+  match("UHMK1", names(df))
+]
+genes_interes
+
+```
+
+```{r}
+NA_gen<-sapply(df[, genes_interes], function(x) sum(is.na(x)))
+NA_gen
+
+```
+
+
+#Normalidad
+
+```{r}
+prueba_shapiro<- lapply(genes_interes, function(g) {
+  
+  x <- as.numeric(df[[g]])
+  
+  if (length(na.omit(x)) < 3 || sd(x, na.rm = TRUE) == 0) {
+    return(data.frame(
+      gene = g,
+      W = NA,
+      p_value = NA
+    ))
+  }
+  
+  test <- shapiro.test(x)
+  
+  data.frame(
+    gene = g,
+    W = test$statistic,
+    p_value = test$p.value
+  )
+})
+
+shapiro_table <- bind_rows(prueba_shapiro) %>%
+  mutate(
+    normalidad = ifelse(p_value >= 0.05,
+                        "Normalidad",
+                        "No normalidad")
+  ) %>%
+  arrange(p_value)
+
+shapiro_table
+
+```
+
+```{r}
+
+```
+
+
