@@ -6,11 +6,21 @@ output: html_document
 ---
 
 ```{r}
+#Install libraries
+#install.packages(c("factoextra", "nortest", "gtsummary","pheatmap")
+#Libraries
+library(ggplot2)
+library(dplyr)
+library(nortest)
+library(stats)
+library(car)
+library(gtsummary)
 library(tidyverse)
 library(factoextra)
-library(ggplot2)
 library(gridExtra)
-df <- read.csv("C:/Users/masol/Documents/R y Estadistica/Base de datos Los Simpson completa.csv", stringsAsFactors = FALSE)
+library(pheatmap)
+file <- "C:/Users/User/Desktop/UNIR/Estadistica_R/mubio02_act3/Estadistica_actividad_grupal/Base de datos Los Simpson completa.csv"
+df <- read.csv(file, stringsAsFactors = FALSE)
 
 ```
 #Limpieza de datos
@@ -197,5 +207,44 @@ fviz_cluster(km_ind,
              title = "Clustering de Individuos (Basado en PCA)")
 ```
 ```{r}
+
+# ------------------------------------------------------------------
+# 5. Correlaciones de Spearman: genes vs PCA
+# ------------------------------------------------------------------
+
+# Correlaciones Spearman
+cor_spearman <- cor(
+  genes_pca,
+  pca_scores,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+)
+
+# ------------------------------------------------------------------
+# 5. Heatmap: genes vs PCA
+# ------------------------------------------------------------------
+
+## Heatmap usando pheatmap
+pheatmap(
+  cor_spearman,
+  color = colorRampPalette(c("skyblue", "white", "pink"))(100),
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "ward.D2",
+  scale = "none",
+  fontsize_row = 6,
+  fontsize_col = 10,
+  main = "Heatmap de correlaciones Spearman (Genes vs 6 PCs)"
+)
+
+## Heatmap usando datos crudos
+pheatmap(
+  genes_pca_scaled,
+  fontsize_col = 6,
+  color = colorRampPalette(c("blue", "white", "red"))(100),
+  main = "Heatmap de expresión génica (datos escalados)"
+)
+# Genes altamanete expresados: PCSK1, SH2B1, LFPR, ADCY3, ANO4, POMC en datos crudos
+
 
 ```
