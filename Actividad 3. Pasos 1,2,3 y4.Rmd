@@ -1,0 +1,201 @@
+---
+title: "Actividad 3. Pasos 1,2,3 y4"
+author: "Grupo 22"
+date: "2026-01-22"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(factoextra)
+library(ggplot2)
+library(gridExtra)
+df <- read.csv("C:/Users/masol/Documents/R y Estadistica/Base de datos Los Simpson completa.csv", stringsAsFactors = FALSE)
+
+```
+#Limpieza de datos
+```{r}
+genes_interes <-names(df)[
+  match("ADCY3", names(df)) :
+  match("UHMK1", names(df))
+]
+genes_interes
+
+```
+
+```{r}
+NA_gen<-sapply(df[, genes_interes], function(x) sum(is.na(x)))
+NA_gen
+
+```
+
+
+#Normalidad
+
+```{r}
+prueba_shapiro<- lapply(genes_interes, function(g) {
+  
+  x <- as.numeric(df[[g]])
+  
+  if (length(na.omit(x)) < 3 || sd(x, na.rm = TRUE) == 0) {
+    return(data.frame(
+      gene = g,
+      W = NA,
+      p_value = NA
+    ))
+  }
+  
+  test <- shapiro.test(x)
+  
+  data.frame(
+    gene = g,
+    W = test$statistic,
+    p_value = test$p.value
+  )
+})
+
+shapiro_table <- bind_rows(prueba_shapiro) %>%
+  mutate(
+    normalidad = ifelse(p_value >= 0.05,
+                        "Normalidad",
+                        "No normalidad")
+  ) %>%
+  arrange(p_value)
+
+shapiro_table
+
+```
+
+```{r}
+# ------------------------------------------------------------------
+# 3.1 Preparación de datos para PCA
+# ------------------------------------------------------------------
+
+genes_pca <- df[, genes_interes]
+
+# Verificar que no haya NA 
+sum(is.na(genes_pca))
+
+# Centrar y escalar las variables antes de PCA
+genes_pca_scaled <- scale(genes_pca, center = TRUE, scale = TRUE)
+
+# ------------------------------------------------------------------
+# 3.2 Ejecutar el PCA
+# ------------------------------------------------------------------
+
+# Realizar PCA 
+pca_result <- prcomp(genes_pca_scaled, center = FALSE, scale. = FALSE)
+
+
+# ------------------------------------------------------------------
+# 3.3 Extraer los scores de las primeras 6 componentes principales
+# ------------------------------------------------------------------
+
+# Obtener los scores 
+pca_scores <- as.data.frame(pca_result$x[, 1:6])
+
+# Renombrar las columnas
+colnames(pca_scores) <- paste0("PC", 1:6)
+
+# Agregar los scores al dataframe original
+df <- cbind(df, pca_scores)
+
+# Verificar que se agregaron correctamente
+head(df[, c("nombre", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6")])
+
+# ------------------------------------------------------------------
+# 3.4 Crear tablas de resumen del PCA
+# ------------------------------------------------------------------
+
+# TABLA 1: Varianza explicada por cada componente (R²)
+varianza_explicada <- data.frame(
+  Componente = paste0("PC", 1:length(pca_result$sdev)),
+  Desviacion_Estandar = pca_result$sdev,
+  Varianza = pca_result$sdev^2,
+  Proporcion_Varianza = (pca_result$sdev^2) / sum(pca_result$sdev^2),
+  Varianza_Acumulada = cumsum((pca_result$sdev^2) / sum(pca_result$sdev^2))
+) %>%
+  mutate(
+    R_cuadrado = Proporcion_Varianza * 100,
+    R_cuadrado_acumulado = Varianza_Acumulada * 100
+  )
+
+# Mostrar solo las primeras 6 componentes
+tabla_varianza <- varianza_explicada[1:6, c("Componente", "R_cuadrado", "R_cuadrado_acumulado")]
+print(tabla_varianza)
+
+# TABLA 2: Cargas de las variables en los componentes principales
+cargas_pca <- as.data.frame(pca_result$rotation[, 1:6])
+cargas_pca <- round(cargas_pca, 3)
+cargas_pca <- cbind(Variable = rownames(cargas_pca), cargas_pca)
+rownames(cargas_pca) <- NULL
+
+# Mostrar primeras filas
+head(cargas_pca, 10)
+```
+
+
+```{r}
+# ------------------------------------------------------------------
+# 4.Visualizaciones
+# ------------------------------------------------------------------
+#Mapa de variables 
+fviz_pca_var(pca_result,
+             col.var = "cos2",
+             gradient.cols = c("blue", "yellow", "red"),
+             repel = TRUE,
+             title = "Variables - Calidad de representación (cos2)")
+#Contribucion de las variables
+var_coords <- get_pca_var(pca_result)$coord
+set.seed(123)
+km_vars <- kmeans(var_coords, centers = 3)
+grupo_vars <- as.factor(km_vars$cluster)
+fviz_pca_var(pca_result, 
+             col.var = grupo_vars, 
+             palette = "jco", 
+             legend.title = "Cluster Genes",
+             repel = TRUE,
+             title = "Clustering de Variables (Genes)")
+# Contribución a la Dimensión 1 (PC1)
+p1 <- fviz_contrib(pca_result, choice = "var", axes = 1, top = 10, title = "Contribución a PC1")
+# Contribución a la Dimensión 2 (PC2)
+p2 <- fviz_contrib(pca_result, choice = "var", axes = 2, top = 10, title = "Contribución a PC2")
+
+# Mostrar ambos gráficos 
+
+grid.arrange(p1, p2, ncol = 2)
+
+# Criterio escogido: <25 Normal, 25-30 Sobrepeso, >30 Obesidad
+df <- df %>%
+  mutate(categoria_imc = case_when(
+    imc_kg_m2 < 25 ~ "Normal",
+    imc_kg_m2 >= 25 & imc_kg_m2 < 30 ~ "Sobrepeso",
+    imc_kg_m2 >= 30 ~ "Obesidad",
+    TRUE ~ "Desconocido"
+  ))
+
+# Individuos
+fviz_pca_ind(pca_result,
+             geom.ind = "point", 
+             col.ind = df$categoria_imc, 
+             palette = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             addEllipses = TRUE, 
+             legend.title = "IMC",
+             title = "Individuos por Categoría de IMC")
+
+#Clustering de individuos
+# Calculo de los  K-means sobre los individuos (usando los resultados del PCA)
+set.seed(123)
+km_ind <- kmeans(pca_result$x, centers = 3)
+
+#Visualizacion
+fviz_cluster(km_ind, 
+             data = genes_pca_scaled, 
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_minimal(),
+             title = "Clustering de Individuos (Basado en PCA)")
+```
+```{r}
+
+```
