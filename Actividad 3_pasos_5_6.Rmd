@@ -278,8 +278,6 @@ Los genes mas importantes en las componentes:
 - El heatmap confirma que el PCA **capturó estructura biológica significativa** en los datos de expresión génica.
 
 
-
-
 ```{r}
 
 # ------------------------------------------------------------------
