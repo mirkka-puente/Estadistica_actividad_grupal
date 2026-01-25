@@ -169,7 +169,10 @@ fviz_pca_var(pca_result,
 p1 <- fviz_contrib(pca_result, choice = "var", axes = 1, top = 10, title = "Contribución a PC1")
 # Contribución a la Dimensión 2 (PC2)
 p2 <- fviz_contrib(pca_result, choice = "var", axes = 2, top = 10, title = "Contribución a PC2")
+```
+El gráfico de correlación de variables muestra cómo se relacionan los 37 genes con los dos primeros componentes principales (Dim1 y Dim2). Los genes con flechas más largas (color rojo/naranja según el cos2) son los que mejor están representados en el mapa y más aportan a la variabilidad de los datos. Los genes agrupados juntos indican una alta correlación positiva entre sí. Aquellos en cuadrantes opuestos presentarían una correlación negativa. 
 
+```{r, warning=FALSE}
 # Mostrar ambos gráficos 
 
 grid.arrange(p1, p2, ncol = 2)
@@ -182,7 +185,13 @@ df <- df %>%
     imc_kg_m2 >= 30 ~ "Obesidad",
     TRUE ~ "Desconocido"
   ))
+```  
+Los gráficos de barras ilustran qué genes específicos tienen el mayor peso en la definición de cada componente: 
+Contribución a PC1: Genes como POMC, ADCY3 y LEPR dominan este componente. Dado que estos genes regulan el apetito y el metabolismo energético, el PC1 puede interpretarse biológicamente como un eje altamente relacionado al metabolismo y apetito. 
 
+Contribución a PC2: Genes como NTRK2 y CADM2 definen este componente, sugiriendo que el PC2 captura un patrón biológico distinto al de PC1. 
+
+```{r, warning=FALSE}
 # Individuos
 fviz_pca_ind(pca_result,
              geom.ind = "point", 
@@ -204,7 +213,10 @@ fviz_cluster(km_ind,
              ellipse.type = "convex", 
              ggtheme = theme_minimal(),
              title = "Clustering de Individuos (Basado en PCA)")
-```
+```  
+Al proyectar a los 59 pacientes sobre los componentes principales y colorearlos por su categoría de IMC (Normal, Sobrepeso, Obesidad), observamos la distribución fenotípica: 
+-Se aprecia una separación visual entre los individuos con 'Obesidad' (puntos rojos) y los 'Normales' (puntos azules), especialmente a lo largo del eje horizontal (Dimensión 1). Esto sugiere que la expresión de los genes capturados por el PC1 es capaz de diferenciar biológicamente a los pacientes obesos de los normopeso.  
+Así mismo el algoritmo de K-means agrupó a los pacientes en 3 clusters basándose puramente en su expresión génica (sin saber su peso). La visualización muestra que estos grupos coinciden razonablemente bien con las categorías clínicas, validando que existe una firma molecular distintiva para los diferentes estados de salud en esta población. 
 
 ```{r, warning=FALSE}
 # ------------------------------------------------------------------
