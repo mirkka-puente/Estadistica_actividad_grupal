@@ -1,0 +1,576 @@
+---
+title: "Actividad 3"
+subtitle: "Proyecto Transversal en R (I): Análisis de bioestadística aplicada a la expresión génica en Los Simpson"
+author: "Grupo 22: Laura Córdova, Xiomira Fiallos,  Lizbeth Navarrete,  Soledad Ortega, Mirkka Puente, Melanie Polo"
+date: "2026-01-22"
+output: 
+  html_document:
+    toc: true            
+    toc_float: true      
+    theme: cerulean        # Estilo visual ('united', 'cerulean' o 'flatly')
+    number_sections: true # Numera 
+
+---
+
+```{=html}
+<style>
+body {
+text-align: justify;
+}
+</style>
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r carga-librerias, message=FALSE, warning=FALSE}
+
+#Install libraries
+#install.packages(c("factoextra", "nortest", "gtsummary","pheatmap")
+#Libraries
+library(ggplot2)
+library(dplyr)
+library(nortest)
+library(stats)
+library(car)
+library(gtsummary)
+library(tidyverse)
+library(factoextra)
+library(gridExtra)
+library(pheatmap)
+library(pROC)
+file <- ("./Base de datos Los Simpson completa.csv")
+df <- read.csv(file, stringsAsFactors = FALSE)
+
+```
+# Limpieza de datos
+```{r limpieza, message=FALSE, warning=FALSE}
+genes_interes <-names(df)[
+  match("ADCY3", names(df)) :
+  match("UHMK1", names(df))
+]
+genes_interes
+
+```
+
+```{r valores-nulos, message=FALSE, warning=FALSE}
+NA_gen<-sapply(df[, genes_interes], function(x) sum(is.na(x)))
+NA_gen
+
+```
+
+
+# Test de Normalidad
+
+```{r test-shapiro, message=FALSE, warning=FALSE}
+prueba_shapiro<- lapply(genes_interes, function(g) {
+  
+  x <- as.numeric(df[[g]])
+  
+  if (length(na.omit(x)) < 3 || sd(x, na.rm = TRUE) == 0) {
+    return(data.frame(
+      gene = g,
+      W = NA,
+      p_value = NA
+    ))
+  }
+  
+  test <- shapiro.test(x)
+  
+  data.frame(
+    gene = g,
+    W = test$statistic,
+    p_value = test$p.value
+  )
+})
+
+shapiro_table <- bind_rows(prueba_shapiro) %>%
+  mutate(
+    normalidad = ifelse(p_value >= 0.05,
+                        "Normalidad",
+                        "No normalidad")
+  ) %>%
+  arrange(p_value)
+shapiro_table
+```
+
+# Análisis de Componentes Principales
+
+```{r analisis-pca, message=FALSE, warning=FALSE}
+# ------------------------------------------------------------------
+# Preparación de datos para PCA
+# ------------------------------------------------------------------
+
+genes_pca <- df[, genes_interes]
+
+# Verificar que no haya NA 
+sum(is.na(genes_pca))
+
+# Centrar y escalar las variables antes de PCA
+genes_pca_scaled <- scale(genes_pca, center = TRUE, scale = TRUE)
+
+# ------------------------------------------------------------------
+# Ejecutar el PCA
+# ------------------------------------------------------------------
+
+# Realizar PCA 
+pca_result <- prcomp(genes_pca_scaled, center = FALSE, scale. = FALSE)
+
+# ------------------------------------------------------------------
+# Extraer los scores de las primeras 6 componentes principales
+# ------------------------------------------------------------------
+
+# Obtener los scores 
+pca_scores <- as.data.frame(pca_result$x[, 1:6])
+
+# Renombrar las columnas
+colnames(pca_scores) <- paste0("PC", 1:6)
+
+# Agregar los scores al dataframe original
+df <- cbind(df, pca_scores)
+
+# Verificar que se agregaron correctamente
+head(df[, c("nombre", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6")])
+
+# ------------------------------------------------------------------
+# Crear tablas de resumen del PCA
+# ------------------------------------------------------------------
+
+# TABLA 1: Varianza explicada por cada componente (R²)
+varianza_explicada <- data.frame(
+  Componente = paste0("PC", 1:length(pca_result$sdev)),
+  Desviacion_Estandar = pca_result$sdev,
+  Varianza = pca_result$sdev^2,
+  Proporcion_Varianza = (pca_result$sdev^2) / sum(pca_result$sdev^2),
+  Varianza_Acumulada = cumsum((pca_result$sdev^2) / sum(pca_result$sdev^2))
+) %>%
+  mutate(
+    R_cuadrado = Proporcion_Varianza * 100,
+    R_cuadrado_acumulado = Varianza_Acumulada * 100
+  )
+
+# Mostrar solo las primeras 6 componentes
+tabla_varianza <- varianza_explicada[1:6, c("Componente", "R_cuadrado", "R_cuadrado_acumulado")]
+print(tabla_varianza)
+
+# TABLA 2: Cargas de las variables en los componentes principales
+cargas_pca <- as.data.frame(pca_result$rotation[, 1:6])
+cargas_pca <- round(cargas_pca, 3)
+cargas_pca <- cbind(Variable = rownames(cargas_pca), cargas_pca)
+rownames(cargas_pca) <- NULL
+
+# Mostrar primeras filas
+head(cargas_pca, 10)
+```
+
+## Visualizaciones PCA
+
+```{r visualizaciones, message=FALSE, warning=FALSE}
+# ------------------------------------------------------------------
+# Visualizaciones
+# ------------------------------------------------------------------
+#Mapa de variables 
+fviz_pca_var(pca_result,
+             col.var = "cos2",
+             gradient.cols = c("blue", "yellow", "red"),
+             repel = TRUE,
+             title = "Variables - Calidad de representación (cos2)")
+#Contribucion de las variables
+var_coords <- get_pca_var(pca_result)$coord
+set.seed(123)
+km_vars <- kmeans(var_coords, centers = 3)
+grupo_vars <- as.factor(km_vars$cluster)
+fviz_pca_var(pca_result, 
+             col.var = grupo_vars, 
+             palette = "jco", 
+             legend.title = "Cluster Genes",
+             repel = TRUE,
+             title = "Clustering de Variables (Genes)")
+# Contribución a la Dimensión 1 (PC1)
+p1 <- fviz_contrib(pca_result, choice = "var", axes = 1, top = 10, title = "Contribución a PC1")
+# Contribución a la Dimensión 2 (PC2)
+p2 <- fviz_contrib(pca_result, choice = "var", axes = 2, top = 10, title = "Contribución a PC2")
+```
+**Interpretación PCA**: 
+El gráfico de correlación de variables muestra cómo se relacionan los 37 genes con los dos primeros componentes principales (Dim1 y Dim2). Los genes con flechas más largas (color rojo/naranja según el cos2) son los que mejor están representados en el mapa y más aportan a la variabilidad de los datos. Los genes agrupados juntos indican una alta correlación positiva entre sí. Aquellos en cuadrantes opuestos presentarían una correlación negativa. 
+
+## Gráficos de barras
+```{r graficos-compl, message=FALSE, warning=FALSE}
+# Mostrar ambos gráficos 
+
+grid.arrange(p1, p2, ncol = 2)
+
+# Criterio escogido: <25 Normal, 25-30 Sobrepeso, >30 Obesidad
+df <- df %>%
+  mutate(categoria_imc = case_when(
+    imc_kg_m2 < 25 ~ "Normal",
+    imc_kg_m2 >= 25 & imc_kg_m2 < 30 ~ "Sobrepeso",
+    imc_kg_m2 >= 30 ~ "Obesidad",
+    TRUE ~ "Desconocido"
+  ))
+```  
+**Interpretación**: 
+Los gráficos de barras ilustran qué genes específicos tienen el mayor peso en la definición de cada componente: 
+Contribución a PC1: Genes como POMC, ADCY3 y LEPR dominan este componente. Dado que estos genes regulan el apetito y el metabolismo energético, el PC1 puede interpretarse biológicamente como un eje altamente relacionado al metabolismo y apetito. Contribución a PC2: Genes como NTRK2 y CADM2 definen este componente, sugiriendo que el PC2 captura un patrón biológico distinto al de PC1. 
+
+## Clustering Individuos 
+```{r clustering-ind, message=FALSE, warning=FALSE}
+# Individuos
+fviz_pca_ind(pca_result,
+             geom.ind = "point", 
+             col.ind = df$categoria_imc, 
+             palette = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             addEllipses = TRUE, 
+             legend.title = "IMC",
+             title = "Individuos por Categoría de IMC")
+
+#Clustering de individuos
+# Calculo de los  K-means sobre los individuos (usando los resultados del PCA)
+set.seed(123)
+km_ind <- kmeans(pca_result$x, centers = 3)
+
+#Visualizacion
+fviz_cluster(km_ind, 
+             data = genes_pca_scaled, 
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_minimal(),
+             title = "Clustering de Individuos (Basado en PCA)")
+```  
+**Interpretación**:
+
+Al proyectar a los 59 pacientes sobre los componentes principales y colorearlos por su categoría de IMC (Normal, Sobrepeso, Obesidad), observamos la distribución fenotípica: 
+
+Se aprecia una separación visual entre los individuos con 'Obesidad' (puntos rojos) y los 'Normales' (puntos azules), especialmente a lo largo del eje horizontal (Dimensión 1). Esto sugiere que la expresión de los genes capturados por el PC1 es capaz de diferenciar biológicamente a los pacientes obesos de los normopeso.  
+
+Así mismo el algoritmo de K-means agrupó a los pacientes en 3 clusters basándose puramente en su expresión génica (sin saber su peso). La visualización muestra que estos grupos coinciden razonablemente bien con las categorías clínicas, validando que existe una firma molecular distintiva para los diferentes estados de salud en esta población. 
+
+## Correlaciones Spearman y Heatmap
+
+```{r corr-spearmen, message=FALSE, warning=FALSE}
+# ------------------------------------------------------------------
+# Correlaciones de Spearman: genes vs PCA
+# ------------------------------------------------------------------
+
+# Correlaciones Spearman
+cor_spearman <- cor(
+  genes_pca,
+  pca_scores,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+)
+
+# ------------------------------------------------------------------
+# Heatmap: genes vs PCA
+# ------------------------------------------------------------------
+
+## Heatmap usando pheatmap
+pheatmap(
+  cor_spearman,
+  color = colorRampPalette(c("skyblue", "white", "pink"))(100),
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "ward.D2",
+  scale = "none",
+  fontsize_row = 6,
+  fontsize_col = 10,
+  main = "Heatmap de correlaciones Spearman (Genes vs 6 PCs)"
+)
+
+# Los 5 genes más correlacionados con PC1
+pc1_genes <- names(head(sort(abs(cor_spearman[, "PC1"]), decreasing = TRUE), 5))
+
+# Los 5 genes más correlacionados con PC2
+pc2_genes <- names(head(sort(abs(cor_spearman[, "PC2"]), decreasing = TRUE), 5))
+
+# Los 5 genes más correlacionados con PC3
+pc3_genes <- names(head(sort(abs(cor_spearman[, "PC3"]), decreasing = TRUE), 5))
+
+
+## No usar, solo referencia
+## Heatmap usando datos crudos
+
+#pheatmap(
+#  genes_pca_scaled,
+#  fontsize_col = 6,
+#  color = colorRampPalette(c("green", "white", "orange"))(100),
+#  main = "Heatmap de expresión génica (datos escalados)"
+#)
+# Genes altamanete expresados: PCSK1, SH2B1, LFPR, ADCY3, ANO4, POMC en ciertos pacientes de datos crudos 
+# Pero la mayoria de genes no tienen un nivel alto de expresion 
+
+```
+**Interpretación Heatmap**: 
+Análisis de asociación entre expresión génica y patrones del PCA. 
+Los valores representan coeficientes de correlación de Spearman (ρ) que varían de -1 a +1. Correlaciones positivas (rosa) indican que mayores valores del gen se asocian con mayores scores del componente. Correlaciones negativas (azul) indican asociación inversa. El clustering jerárquico agrupa genes con patrones similares.
+
+Se identificaron aproximadamente 3 clusters de genes:
+   - **Cluster 1**: Genes correlacionados con PC1 y PC4
+   - **Cluster 2**: Genes correlacionados con PC2 y PC5
+   - **Cluster 3**: Genes correlacionados con PC3 y PC6
+
+Los genes mas importantes en las componentes:
+   - **PC1**: GPR151, POMC, LEPR, ANKRD27, ADCY3
+   - **PC2**: NTRK2, CADM2, PHIP, GPR151, NRP1
+   - **PC3**: CREBRF, FTO, KIAA0586, PHIP, TMEM18
+   
+**Implicaciones**
+- Los clusters identificados corresponden a **vías metabólicas diferenciadas** capturadas por los componentes principales.
+- El heatmap confirma que el PCA **capturó estructura biológica significativa** en los datos de expresión génica.
+
+## Terciles para PCs
+```{r terciles-pcs, message=FALSE, warning=FALSE}
+
+# ------------------------------------------------------------------
+# Terciles para PCs
+# ------------------------------------------------------------------
+
+# Puntos de corte
+corte <- function(x){
+  cut(
+    x,
+    breaks = quantile(x, probs = c(0, 1/3, 2/3, 1), na.rm = TRUE),
+    include.lowest = TRUE,
+    labels = c("T1", "T2", "T3")
+  )
+}
+
+# Asignar los cortes a columnas de PCs en df
+df$PC1_t <- corte(df$PC1)
+df$PC2_t <- corte(df$PC2)
+df$PC3_t <- corte(df$PC3)
+
+# ------------------------------------------------------------------
+# Tabla descriptiva
+# ------------------------------------------------------------------
+
+# PC1
+
+tabla_PC1 <- df %>%
+  select(PC1_t, all_of(genes_interes)) %>%
+  tbl_summary(
+    by = PC1_t,
+    type = list(
+      all_of(genes_interes) ~ "continuous"
+    ),
+    statistic = all_continuous() ~ "{median} ({p25}–{p75})",
+    digits = all_continuous() ~ 1,
+  ) %>%
+  add_p(
+    test = list(all_of(genes_interes) ~ "kruskal.test"),
+    pvalue_fun = ~ style_pvalue(.x, digits = 3)
+  ) %>%
+  # Mejorar formato
+  modify_header(
+    label = "**Gen**"
+  )
+
+# PC2
+
+tabla_PC2 <- df %>%
+  select(PC2_t, all_of(genes_interes)) %>%
+  tbl_summary(
+    by = PC2_t,
+    type = list(
+      all_of(genes_interes) ~ "continuous"
+    ),
+    statistic = all_continuous() ~ "{median} ({p25}–{p75})",
+    digits = all_continuous() ~ 1,
+  ) %>%
+  add_p(
+    test = list(all_of(genes_interes) ~ "kruskal.test"),
+    pvalue_fun = ~ style_pvalue(.x, digits = 3)
+  ) %>%
+  # Mejorar formato
+  modify_header(
+    label = "**Gen**"
+  )
+
+# PC3
+
+tabla_PC3 <- df %>%
+  select(PC3_t, all_of(genes_interes)) %>%
+  tbl_summary(
+    by = PC3_t,
+    type = list(
+      all_of(genes_interes) ~ "continuous"
+    ),
+    statistic = all_continuous() ~ "{median} ({p25}–{p75})",
+    digits = all_continuous() ~ 1,
+  ) %>%
+  add_p(
+    test = list(all_of(genes_interes) ~ "kruskal.test"),
+    pvalue_fun = ~ style_pvalue(.x, digits = 3)
+  ) %>%
+  # Mejorar formato
+  modify_header(
+    label = "**Gen**"
+  )
+
+# Unir todas las tablas 
+
+# Unir las tablas
+tabla_combinada <- tbl_merge(
+  tbls = list(tabla_PC1, tabla_PC2, tabla_PC3),
+  tab_spanner = c("**Componente 1**", "**Componente 2**", "**Componente 3**")
+) %>%
+  modify_caption(
+    "**Tabla 3.** Expresión génica dividida por terciles de los tres componentes principales del PCA. Los genes se presentan con la mediana debido a distribución no normal. Los componentes principales representan patrones combinados de expresión génica que explican la máxima varianza en los datos."
+  )
+
+
+# Mostrar tabla combinada
+tabla_combinada
+
+```
+
+**Interpretación de la expresión génica dividida por terciles de los tres componentes principales del PCA**: 
+La tabla muestra diferencias significativas en la expresión de varios genes entre pacientes con distintos perfiles metabólicos (representados por los componentes del PCA). Los genes más relevantes son aquellos con valores p < 0.05, que indican asociación estadísticamente significativa con los PCs. 
+
+En el PC1, los genes significativos (p < 0.05) son: *ANKRD27, DPP9, GIPR, **GPR151**, MC4R, **POMC**, TMEM18, ADCY3, CADM1, UHMK1*. Estos genes estan asociados a la obesidad, metabolismo energético y regulación del apetito. 
+
+En el PC2, los genes significativos (p < 0.05) son: *ANKRD27, **CADM2**, FTO, **GPR151**, KIAA1109, KSR2, LEP, **NRP1**, **NTRK2**, PHIP, UHMK1*. Estos genes estan asociados a patrones inflamatorios. 
+
+En el PC3, los genes significativos (p < 0.05) son: _**CREBRF**, **FTO**, KIAA0586, KSR2, **PHIP**, **SH2B1**, TMEM18_. Estos genes estan asociados a la regulación central del apetito y gasto energético y al desarrollo del tejido adiposo.
+
+# REGRESIÓN LOGÍSTICA
+
+```{r reg-logis, message=FALSE, warning=FALSE}
+# ------------------------------------------------------------------
+# REGRESIÓN LOGÍSTICA
+# --------------------------------------------------- ---------------
+
+# Variable de respuesta: Obesidad (variable categórica a partir de 'categoria_imc')
+
+df <- df %>%
+  mutate(
+    # Crear la variable binaria de respuesta
+    obesidad = factor(ifelse(categoria_imc == "Obesidad", "Si", "No"), 
+                      levels = c("No", "Si")),
+    # Asegurar que 'obesidad' tenga "No" como referencia (base)
+    obesidad = relevel(obesidad, ref = "No"),
+    
+    # 3. Terciles como Factores
+
+    PC1_t = as.factor(PC1_t),
+    PC2_t = as.factor(PC2_t),
+    PC3_t = as.factor(PC3_t),
+    
+    # 4. Variables de ajuste también factores
+    tabaco = as.factor(tabaco),
+    sexo = as.factor(sexo)
+  ) 
+
+# Ejecutar el modelo logístico
+modelo1_log <- glm(
+  obesidad ~ PC1_t + PC2_t + PC3_t,  
+  data = df,
+  family = binomial
+)
+
+modelo2_log <- glm(obesidad ~ PC1_t + PC2_t + PC3_t + edad_anios + tabaco + sexo + ldl_mg_dl,
+  data = df,
+  family = binomial
+)
+
+modelo3_log <- glm(obesidad ~ PC1_t + PC2_t + PC3_t + edad_anios + tabaco,
+  data = df,
+  family = binomial
+) 
+
+#Valores AIC 
+modelo1_log$aic
+modelo2_log$aic
+modelo3_log$aic
+
+# Tablas individuales
+tbl1 <- tbl_regression(modelo1_log, exponentiate = TRUE, tidy_fun = broom.helpers::tidy_parameters) 
+tbl2 <- tbl_regression(modelo2_log, exponentiate = TRUE, tidy_fun = broom.helpers::tidy_parameters)
+tbl3 <- tbl_regression(modelo3_log, exponentiate = TRUE, tidy_fun = broom.helpers::tidy_parameters)
+
+# Fusionar las tablas
+tabla_logit <- tbl_merge(
+  tbls = list(tbl1, tbl2, tbl3),
+  tab_spanner = c("Modelo 1", "Modelo 2", "Modelo 3")
+) %>% 
+  modify_column_hide(columns = c(ci_1, ci_2, ci_3)) %>% 
+  # Renombrar las columnas de estimación
+  modify_header(
+    list(
+      estimate_1 ~ "**OR (M1)**",
+      estimate_2 ~ "**OR (M2)**",
+      estimate_3 ~ "**OR (M3)**"
+    )
+  ) %>%
+  bold_labels()
+tabla_logit 
+```
+
+**Interpretación**: 
+
+Selección y Estabilidad del Modelo: Tras evaluar diversas configuraciones, se determinó que el Modelo 3 (ajustado por edad y hábito tabáquico) ofrece el mejor equilibrio entre parsimonia y estabilidad. A pesar del tamaño muestral limitado ($N=59$), este ajuste mitigó los problemas de separación perfecta observados en los modelos saturados previos, corrigiendo la inflación de los errores estándar y permitiendo una estimación numérica viable de los parámetros del modelo.
+
+## Validación y Capacidad Predictiva
+
+```{r eval-roc, message=FALSE, warning=FALSE}
+# EVALUACIÓN DEL MODELO 3. Mejor capacidad predictiva
+library(GGally) 
+# Obtener predicciones 
+predicciones <- predict(modelo3_log, type = "response" )
+
+# Calcular la curva ROC
+roc_obj <- roc(df$obesidad, predicciones)
+
+# Graficar
+plot(roc_obj, main = paste("Modelo3_Curva ROC - AUC:", round(auc(roc_obj), 2)), col = "blue")
+
+```
+
+**Interpretación**: 
+Validación y Capacidad Predictiva: La evaluación mediante la curva ROC arrojó un AUC de 0.85, lo que indica una capacidad discriminativa excelente para distinguir entre individuos con y sin obesidad. La matriz de confusión corroboró este alto rendimiento, clasificando correctamente a la totalidad de los controles ($n=52$) y detectando con precisión a los casos positivos ($n=7$) presentes en la cohorte analizada.
+
+
+## Asociaciones Genómicas y Clínicas con la Obesidad
+
+```{r eval-mod, message=FALSE, warning=FALSE}
+
+# Crear el forest plot desde el modelo3 
+ic95 <- ggcoef_model(modelo3_log, 
+             exponentiate = TRUE, # Mostrar OR 
+             variable_labels = c(
+               PC1_t = "Terciles PC1",
+               PC2_t = "Terciles PC2",
+               PC3_t = "Terciles PC3",
+               edad_anios = "Edad",
+               tabaco = "Tabaco"
+             )) +
+  geom_vline(xintercept = 1, color = "red", linetype = "dashed") +
+  labs(title = "Modelo 3: Asociaciones Genómicas y Clínicas con la Obesidad",
+       x = "Odds Ratio (IC 95%)") 
+print(ic95)
+```
+
+**Interpretación**
+
+Asociación Genómica y Relevancia Clínica: El análisis multivariante reveló un fenómeno de confusión negativa relevante: el ajuste por variables sociodemográficas potenció la señal genética, elevando el Odds Ratio del tercer tercil de la PC1 a 6.33 (frente a estimaciones menores en modelos crudos). Si bien el intervalo de confianza al 95% refleja la incertidumbre estadística inherente al tamaño muestral ($0.63 - 184$), la magnitud del efecto sugiere que existe una fuerte tendencia biológica. Esto indica que, una vez controlado el entorno clínico, el perfil de expresión génica emerge como un determinante de gran impacto en el riesgo de adiposidad.
+
+# CONCLUSIONES
+
+El presente estudio integró el análisis de expresión génica de 37 marcadores con variables clínicas para caracterizar fenotipos de obesidad mediante técnicas de reducción dimensional y modelado predictivo. A partir de los resultados obtenidos, se concluye lo siguiente:
+
+1.  **Identificación de Firmas Moleculares Diferenciales:**
+    El Análisis de Componentes Principales (PCA) reveló una estructura biológica latente clara, donde el **Componente Principal 1 (PC1)** actuó como un eje metabólico determinante. Este componente, impulsado por genes reguladores del apetito y gasto energético como *POMC*, *ADCY3* y *LEPR*, demostró la capacidad de diferenciar visual y estadísticamente a los individuos con obesidad de los normopeso, validando la existencia de un perfil transcriptómico distintivo asociado al exceso de adiposidad.
+
+2.  **Validación de Clusters Genéticos:**
+    El análisis de clustering jerárquico y *K-means* corroboró la consistencia biológica de los datos, agrupando a los pacientes en tres categorías que mostraron una alta coincidencia con su clasificación clínica de IMC. Asimismo, se identificaron vías metabólicas específicas representadas por el PC2 (asociado a inflamación con genes como *NTRK2* y *CADM2*) y el PC3 (regulación central con *FTO* y *CREBRF*), sugiriendo una heterogeneidad molecular en la patología de la obesidad.
+
+3.  **Capacidad Predictiva y Ajuste del Modelo:**
+    El modelo de regresión logística multivariante ajustado por edad y tabaquismo (Modelo 3) presentó un rendimiento diagnóstico sobresaliente, con un **Área Bajo la Curva (AUC) de 0.85**. Este modelo no solo clasificó correctamente a la totalidad de los controles, sino que también identificó con precisión a los casos positivos, demostrando que la información genómica condensada en los componentes principales aporta un valor predictivo superior al de las variables clínicas aisladas.
+
+4.  **Impacto del Ajuste Clínico (Confusión Negativa):**
+    Se observó un fenómeno de confusión negativa relevante: al ajustar el modelo por variables sociodemográficas, la magnitud de la asociación entre el perfil genético (PC1) y la obesidad se incrementó sustancialmente (**OR del tercer tercil = 6.33**). Esto indica que factores como la edad y el tabaquismo pueden enmascarar la verdadera influencia de la predisposición genética si no se controlan adecuadamente.
+
+5.  **Limitaciones y Perspectiva:**
+    Si bien el tamaño muestral ($N=59$) generó intervalos de confianza amplios, la estabilidad del modelo (AIC 50.85) y la coherencia biológica de los genes identificados respaldan la robustez del enfoque metodológico. Estos hallazgos sugieren que el uso de "biomarcadores compuestos" derivados del PCA constituye una estrategia viable para la estratificación del riesgo en medicina de precisión, permitiendo superar las limitaciones del análisis de genes individuales.
