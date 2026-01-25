@@ -236,17 +236,49 @@ pheatmap(
   main = "Heatmap de correlaciones Spearman (Genes vs 6 PCs)"
 )
 
+# Los 5 genes más correlacionados con PC1
+pc1_genes <- names(head(sort(abs(cor_spearman[, "PC1"]), decreasing = TRUE), 5))
+
+# Los 5 genes más correlacionados con PC2
+pc2_genes <- names(head(sort(abs(cor_spearman[, "PC2"]), decreasing = TRUE), 5))
+
+# Los 5 genes más correlacionados con PC3
+pc3_genes <- names(head(sort(abs(cor_spearman[, "PC3"]), decreasing = TRUE), 5))
+
+
+## No usar, solo referencia
 ## Heatmap usando datos crudos
-pheatmap(
-  genes_pca_scaled,
-  fontsize_col = 6,
-  color = colorRampPalette(c("green", "white", "orange"))(100),
-  main = "Heatmap de expresión génica (datos escalados)"
-)
+
+#pheatmap(
+#  genes_pca_scaled,
+#  fontsize_col = 6,
+#  color = colorRampPalette(c("green", "white", "orange"))(100),
+#  main = "Heatmap de expresión génica (datos escalados)"
+#)
 # Genes altamanete expresados: PCSK1, SH2B1, LFPR, ADCY3, ANO4, POMC en ciertos pacientes de datos crudos 
 # Pero la mayoria de genes no tienen un nivel alto de expresion 
 
+
+
 ```
+Heatmap: Análisis de asociación entre expresión génica y patrones del PCA. Los valores representan coeficientes de correlación de Spearman (ρ) que varían de -1 a +1. Correlaciones positivas (rosa) indican que mayores valores del gen se asocian con mayores scores del componente. Correlaciones negativas (azul) indican asociación inversa. El clustering jerárquico agrupa genes con patrones similares.
+
+Se identificaron aproximadamente 3 clusters de genes:
+   - **Cluster 1**: Genes correlacionados con PC1 y PC4
+   - **Cluster 2**: Genes correlacionados con PC2 y PC5
+   - **Cluster 3**: Genes correlacionados con PC3 y PC6
+
+Los genes mas importantes en las componentes:
+   - **PC1**: GPR151, POMC, LEPR, ANKRD27, ADCY3
+   - **PC2**: NTRK2, CADM2, PHIP, GPR151, NRP1
+   - **PC3**: CREBRF, FTO, KIAA0586, PHIP, TMEM18
+   
+## Implicaciones
+- Los clusters identificados corresponden a **vías metabólicas diferenciadas** capturadas por los componentes principales.
+- El heatmap confirma que el PCA **capturó estructura biológica significativa** en los datos de expresión génica.
+
+
+
 
 ```{r}
 
@@ -352,7 +384,15 @@ tabla_combinada <- tbl_merge(
 tabla_combinada
 
 ```
-Tabla 3. Tabla dscriptiva 
+
+La tabla muestra diferencias significativas en la expresión de varios genes entre pacientes con distintos perfiles metabólicos (representados por los componentes del PCA). Los genes más relevantes son aquellos con valores p < 0.05, que indican asociación estadísticamente significativa con los PCs. 
+
+En el PC1, los genes significativos (p < 0.05) son: *ANKRD27, DPP9, GIPR, **GPR151**, MC4R, **POMC**, TMEM18, ADCY3, CADM1, UHMK1*. Estos genes estan asociados a la obesidad, metabolismo energético y regulación del apetito. 
+
+En el PC2, los genes significativos (p < 0.05) son: *ANKRD27, **CADM2**, FTO, **GPR151**, KIAA1109, KSR2, LEP, **NRP1**, **NTRK2**, PHIP, UHMK1*. Estos genes estan asociados a patrones inflamatorios. 
+
+En el PC3, los genes significativos (p < 0.05) son: _**CREBRF**, **FTO**, KIAA0586, KSR2, **PHIP**, **SH2B1**, TMEM18_. Estos genes estan asociados a la regulación central del apetito y gasto energético y al desarrollo del tejido adiposo.
+
 
 
 ```{r, warning=FALSE}
