@@ -291,10 +291,7 @@ tabla_PC1 <- df %>%
   ) %>%
   # Mejorar formato
   modify_header(
-    label = "**Gen**",
-    stat_1 = "**T1** (N = {n})",
-    stat_2 = "**T2** (N = {n})",
-    stat_3 = "**T3** (N = {n})"
+    label = "**Gen**"
   )
 
 # PC2
@@ -315,10 +312,7 @@ tabla_PC2 <- df %>%
   ) %>%
   # Mejorar formato
   modify_header(
-    label = "**Gen**",
-    stat_1 = "**T1** (N = {n})",
-    stat_2 = "**T2** (N = {n})",
-    stat_3 = "**T3** (N = {n})"
+    label = "**Gen**"
   )
 
 # PC3
@@ -339,10 +333,7 @@ tabla_PC3 <- df %>%
   ) %>%
   # Mejorar formato
   modify_header(
-    label = "**Gen**",
-    stat_1 = "**T1** (N = {n})",
-    stat_2 = "**T2** (N = {n})",
-    stat_3 = "**T3** (N = {n})"
+    label = "**Gen**"
   )
 
 # Unir todas las tablas 
@@ -351,12 +342,17 @@ tabla_PC3 <- df %>%
 tabla_combinada <- tbl_merge(
   tbls = list(tabla_PC1, tabla_PC2, tabla_PC3),
   tab_spanner = c("**Componente 1**", "**Componente 2**", "**Componente 3**")
-)
+) %>%
+  modify_caption(
+    "**Tabla 3.** Expresión génica dividida por terciles de los tres componentes principales del PCA. Los genes se presentan con la mediana debido a distribución no normal. Los componentes principales representan patrones combinados de expresión génica que explican la máxima varianza en los datos."
+  )
+
 
 # Mostrar tabla combinada
 tabla_combinada
 
 ```
+Tabla 3. Tabla dscriptiva 
 
 
 ```{r, warning=FALSE}
